@@ -1,0 +1,8 @@
+node_modules/
+web/node_modules/
+platform-data/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
