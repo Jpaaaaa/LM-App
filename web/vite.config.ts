@@ -4,7 +4,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
-const repoRoot = path.join(root, '..', '..')
+const repoRoot = path.join(root, '..')
 
 export default defineConfig({
   plugins: [react()],

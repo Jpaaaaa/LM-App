@@ -7,7 +7,7 @@ import { runPlatformSchemaBootstrap } from './platform-schema.bootstrap'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 function sqlJsDistDir(): string {
-  return path.join(__dirname, '..', '..', 'node_modules', 'sql.js', 'dist')
+  return path.join(__dirname, '..', 'node_modules', 'sql.js', 'dist')
 }
 
 let db: SqlDatabase | null = null

@@ -7,7 +7,7 @@ import type {
   PlatformPingResponse,
 } from '@shared/types/platform-devices'
 
-import { LICENSE_ROLLING_SYNC_MAX_MS } from '../../shared/license-rolling.ts'
+import { LICENSE_ROLLING_SYNC_MAX_MS } from '../shared/license-rolling.ts'
 
 /**
  * Rolling window: must ping at least once within this interval (ms).

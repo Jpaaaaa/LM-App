@@ -239,7 +239,7 @@ function DeviceCard({
 }
 
 /* ─── Main App ─── */
-export function App() {
+export function App({ onLogout }: { onLogout: () => void }) {
   const [devices, setDevices] = useState<DeviceRow[]>([])
   const [error, setError]     = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -267,7 +267,7 @@ export function App() {
   const load = useCallback(async () => {
     setLoading(true); setError(null)
     try {
-      const r = await fetch('/api/platform/admin/devices')
+      const r = await fetch('/api/platform/admin/devices', { credentials: 'include' })
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { error?: string }
         throw new Error(j.error ?? r.statusText)
@@ -294,7 +294,7 @@ export function App() {
         customValidForMs = unitToMs(amt, customUnit)
       }
       const r = await fetch('/api/platform/admin/devices', {
-        method: 'POST', headers: JSON_HEADERS,
+        method: 'POST', headers: JSON_HEADERS, credentials: 'include',
         body: JSON.stringify({
           machineId: newMachineId.trim(),
           label: newLabel.trim() || null,
@@ -315,7 +315,7 @@ export function App() {
     setError(null)
     try {
       const r = await fetch(`/api/platform/admin/devices/${encodeURIComponent(machineId)}/revoke`, {
-        method: 'PATCH', headers: JSON_HEADERS,
+        method: 'PATCH', headers: JSON_HEADERS, credentials: 'include',
         body: JSON.stringify({ revoked: !revoked }),
       })
       if (!r.ok) throw new Error(await r.text())
@@ -345,7 +345,7 @@ export function App() {
     setEditSaving(true)
     try {
       const r = await fetch(`/api/platform/admin/devices/${encodeURIComponent(editRow.machineId)}`, {
-        method: 'PATCH', headers: JSON_HEADERS,
+        method: 'PATCH', headers: JSON_HEADERS, credentials: 'include',
         body: JSON.stringify({
           label: editLabel.trim() || null,
           notes: editNotes.trim() || null,
@@ -365,7 +365,10 @@ export function App() {
     if (!window.confirm(`Delete device?\n${machineId}`)) return
     setError(null)
     try {
-      const r = await fetch(`/api/platform/admin/devices/${encodeURIComponent(machineId)}`, { method: 'DELETE' })
+      const r = await fetch(`/api/platform/admin/devices/${encodeURIComponent(machineId)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      })
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { error?: string }
         throw new Error(j.error ?? r.statusText)
@@ -400,7 +403,19 @@ export function App() {
                 <p className="nav-bar__subtitle">License manager · Device activation · Update feed</p>
               </div>
             </div>
-            <span className="nav-bar__badge">Admin</span>
+            <div className="nav-bar__actions">
+              <span className="nav-bar__badge">Admin</span>
+              <button
+                type="button"
+                className="nav-bar__logout"
+                onClick={async () => {
+                  await fetch('/api/platform/auth/logout', { method: 'POST', credentials: 'include' })
+                  onLogout()
+                }}
+              >
+                Log out
+              </button>
+            </div>
           </div>
         </nav>
       </header>

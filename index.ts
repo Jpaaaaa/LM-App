@@ -11,6 +11,10 @@ const webDistPath = path.join(__dirname, 'web', 'dist')
 const updatesDir = process.env.PLATFORM_UPDATES_DIR ?? path.join(process.cwd(), 'platform-data', 'updates')
 
 async function main(): Promise<void> {
+  if (!process.env.PLATFORM_ADMIN_PASSWORD_BCRYPT?.trim()) {
+    console.error('Set PLATFORM_ADMIN_PASSWORD_BCRYPT (bcrypt hash of the admin password).')
+    process.exit(1)
+  }
   await startPlatformServer({
     dbPath,
     port,
@@ -20,9 +24,8 @@ async function main(): Promise<void> {
   console.log(`Platform API listening on http://0.0.0.0:${port}`)
   console.log(`DB: ${dbPath}`)
   console.log(`Updates dir: ${updatesDir}`)
-  console.warn(
-    'Admin API is not authenticated — use localhost, a private network, or a reverse proxy in production.',
-  )
+  const adminUser = process.env.PLATFORM_ADMIN_USERNAME?.trim() || 'admin'
+  console.log(`Admin login: username=${adminUser} (session cookie; change password via new bcrypt hash in env).`)
 }
 
 main().catch((e) => {

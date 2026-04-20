@@ -1,10 +1,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import Fastify from 'fastify'
 import { initPlatformDb } from '../db/platform-db'
+import { requireAdminSession } from './auth/require-admin'
+import { registerPlatformAuthRoutes } from './routes/platform-auth.routes'
 import { registerPlatformAdminRoutes } from './routes/platform-admin.routes'
 import { registerPlatformAdminUpdatesRoutes } from './routes/platform-admin-updates.routes'
 import { registerPlatformPingRoutes } from './routes/platform-ping.routes'
@@ -30,6 +33,14 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
   // uploads; raise it so large multipart requests aren't rejected before the
   // per-file limit in `@fastify/multipart` kicks in.
   const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 * 1024 })
+  const sessionSecret = process.env.PLATFORM_SESSION_SECRET?.trim()
+  if (!sessionSecret) {
+    throw new Error('PLATFORM_SESSION_SECRET is required (use a long random string)')
+  }
+  await app.register(cookie, {
+    secret: sessionSecret,
+    hook: 'onRequest',
+  })
   await app.register(cors, { origin: true, credentials: true })
   await app.register(fastifyMultipart, {
     limits: {
@@ -45,7 +56,6 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
   }))
 
   await registerPlatformPingRoutes(app)
-  await registerPlatformAdminRoutes(app)
 
   // Serve Electron auto-update artifacts under /updates/ and expose a JSON manifest
   // endpoint at /api/platform/update/latest for the admin UI. The directory is
@@ -63,7 +73,14 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
     list: false,
   })
   await registerPlatformUpdateRoutes(app, { updatesDir })
-  await registerPlatformAdminUpdatesRoutes(app, { updatesDir })
+
+  await registerPlatformAuthRoutes(app)
+
+  await app.register(async (protectedApp) => {
+    protectedApp.addHook('preHandler', requireAdminSession)
+    await registerPlatformAdminRoutes(protectedApp)
+    await registerPlatformAdminUpdatesRoutes(protectedApp, { updatesDir })
+  })
 
   const webRoot = opts.webDist
   if (webRoot && fs.existsSync(webRoot)) {
@@ -72,11 +89,15 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
       prefix: '/',
       decorateReply: false,
     })
+    const indexHtml = path.join(path.resolve(webRoot), 'index.html')
     app.setNotFoundHandler((req, reply) => {
       if (req.url.startsWith('/api')) {
         return reply.status(404).send({ error: 'Not found' })
       }
-      return reply.sendFile('index.html', path.resolve(webRoot))
+      if (!fs.existsSync(indexHtml)) {
+        return reply.status(404).send('Not found')
+      }
+      return reply.type('text/html').send(fs.createReadStream(indexHtml))
     })
   }
 

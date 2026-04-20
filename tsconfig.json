@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "paths": {
+      "@shared/*": ["./shared/*"]
+    }
+  },
+  "include": ["index.ts", "db/**/*.ts", "http/**/*.ts", "services/**/*.ts", "shared/**/*.ts"]
+}

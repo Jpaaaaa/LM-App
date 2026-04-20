@@ -135,7 +135,7 @@ export function ReleasesTab() {
       const [mRes, hRes, fRes] = await Promise.all([
         fetch('/api/platform/update/latest'),
         fetch('/api/platform/update/health'),
-        fetch('/api/platform/admin/updates/files'),
+        fetch('/api/platform/admin/updates/files', { credentials: 'include' }),
       ])
       if (!mRes.ok) throw new Error(`manifest: ${mRes.statusText}`)
       if (!hRes.ok) throw new Error(`health: ${hRes.statusText}`)
@@ -181,6 +181,7 @@ export function ReleasesTab() {
     for (const f of arr) form.append('files', f, f.name)
 
     const xhr = new XMLHttpRequest()
+    xhr.withCredentials = true
     xhr.open('POST', '/api/platform/admin/updates/upload')
     xhr.upload.onprogress = (ev) => {
       if (ev.lengthComputable) {
@@ -239,6 +240,7 @@ export function ReleasesTab() {
       const r = await fetch('/api/platform/admin/updates/publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ installer: name }),
       })
       if (!r.ok) {
@@ -262,6 +264,7 @@ export function ReleasesTab() {
     try {
       const r = await fetch(`/api/platform/admin/updates/files/${encodeURIComponent(name)}`, {
         method: 'DELETE',
+        credentials: 'include',
       })
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { error?: string; message?: string }
