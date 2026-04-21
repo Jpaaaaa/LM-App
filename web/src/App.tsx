@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { formatLicenseRemainMs } from '@shared/format-license-countdown'
+import { formatLicenseRemainDaysMinutes, formatLicenseRemainMs } from '@shared/format-license-countdown'
 import { ReleasesTab } from './ReleasesTab'
 import './styles.css'
 
@@ -18,6 +18,9 @@ type DeviceRow = {
   createdAtMs: number
   updatedAtMs: number
   notes: string | null
+  rollingMaxMs: number | null
+  /** Resolved offline window (ms): per-device or server default). */
+  effectiveRollingMaxMs?: number
   computedStatus: string
   rollingDeadlineMs: number
 }
@@ -31,6 +34,26 @@ function unitToMs(amount: number, unit: CustomUnit): number {
     case 'days':    return amount * 86_400_000
     default:        return amount * 1_000
   }
+}
+
+/** null = server default; `err` = invalid input */
+function parseOfflineGraceMs(daysStr: string, minutesStr: string): number | null | 'err' {
+  const dTrim = daysStr.trim()
+  const mTrim = minutesStr.trim()
+  if (!dTrim && !mTrim) return null
+  const d = dTrim === '' ? 0 : Number(dTrim)
+  const m = mTrim === '' ? 0 : Number(mTrim)
+  if (!Number.isInteger(d) || !Number.isInteger(m) || d < 0 || m < 0) return 'err'
+  const total = d * 86_400_000 + m * 60_000
+  if (total <= 0) return null
+  return total
+}
+
+function msToOfflineDaysMinutes(ms: number | null): { days: string; minutes: string } {
+  if (ms == null || !Number.isFinite(ms)) return { days: '', minutes: '' }
+  const d = Math.floor(ms / 86_400_000)
+  const m = Math.floor((ms % 86_400_000) / 60_000)
+  return { days: String(d), minutes: String(m) }
 }
 function msToDatetimeLocal(ms: number): string {
   const d = new Date(ms)
@@ -202,6 +225,16 @@ function DeviceCard({
           <div className="device-meta__label">Last sync</div>
           <div className="device-meta__value">{fmtDate(d.lastSyncAtMs)}</div>
         </div>
+        <div className="device-meta">
+          <div className="device-meta__label">Offline max</div>
+          <div className="device-meta__value">
+            {d.rollingMaxMs != null && Number.isFinite(d.rollingMaxMs)
+              ? formatLicenseRemainDaysMinutes(d.rollingMaxMs)
+              : d.effectiveRollingMaxMs != null && Number.isFinite(d.effectiveRollingMaxMs)
+                ? `Default (${formatLicenseRemainDaysMinutes(d.effectiveRollingMaxMs)})`
+                : 'Server default'}
+          </div>
+        </div>
       </div>
 
       {/* Actions */}
@@ -239,7 +272,7 @@ function DeviceCard({
 }
 
 /* ─── Main App ─── */
-export function App({ onLogout }: { onLogout: () => void }) {
+export function App() {
   const [devices, setDevices] = useState<DeviceRow[]>([])
   const [error, setError]     = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -252,6 +285,8 @@ export function App({ onLogout }: { onLogout: () => void }) {
   const [renew,        setRenew]        = useState(true)
   const [customAmount, setCustomAmount] = useState('7')
   const [customUnit,   setCustomUnit]   = useState<CustomUnit>('days')
+  const [newRollingDays, setNewRollingDays] = useState('')
+  const [newRollingMinutes, setNewRollingMinutes] = useState('')
 
   const [editOpen,     setEditOpen]     = useState(false)
   const [editRow,      setEditRow]      = useState<DeviceRow | null>(null)
@@ -260,6 +295,8 @@ export function App({ onLogout }: { onLogout: () => void }) {
   const [editTier,     setEditTier]     = useState('5d')
   const [editExpires,  setEditExpires]  = useState('')
   const [editLastSync, setEditLastSync] = useState('')
+  const [editRollingDays, setEditRollingDays] = useState('')
+  const [editRollingMinutes, setEditRollingMinutes] = useState('')
   const [editSaving,   setEditSaving]   = useState(false)
 
   const [tab, setTab] = useState<TabId>('devices')
@@ -293,6 +330,11 @@ export function App({ onLogout }: { onLogout: () => void }) {
         if (!Number.isFinite(amt) || amt <= 0) { setError('Enter a positive number.'); return }
         customValidForMs = unitToMs(amt, customUnit)
       }
+      const rollingParsed = parseOfflineGraceMs(newRollingDays, newRollingMinutes)
+      if (rollingParsed === 'err') {
+        setError('Offline grace: use whole numbers (days and minutes ≥ 0).')
+        return
+      }
       const r = await fetch('/api/platform/admin/devices', {
         method: 'POST', headers: JSON_HEADERS, credentials: 'include',
         body: JSON.stringify({
@@ -301,13 +343,17 @@ export function App({ onLogout }: { onLogout: () => void }) {
           tier: newTier, renew,
           notes: newNotes.trim() || null,
           ...(customValidForMs != null ? { customValidForMs } : {}),
+          ...(rollingParsed !== null ? { rollingMaxMs: rollingParsed } : {}),
         }),
       })
       if (!r.ok) {
         const j = (await r.json().catch(() => ({}))) as { error?: string; message?: string }
         throw new Error(j.message ?? j.error ?? r.statusText)
       }
-      setNewMachineId(''); await load()
+      setNewMachineId('')
+      setNewRollingDays('')
+      setNewRollingMinutes('')
+      await load()
     } catch (e) { setError(e instanceof Error ? e.message : String(e)) }
   }
 
@@ -328,6 +374,11 @@ export function App({ onLogout }: { onLogout: () => void }) {
     setEditTier(d.tier)
     setEditExpires(d.tier === 'lifetime' || d.expiresAtMs == null ? '' : msToDatetimeLocal(d.expiresAtMs))
     setEditLastSync(msToDatetimeLocal(d.lastSyncAtMs ?? d.createdAtMs))
+    {
+      const { days, minutes } = msToOfflineDaysMinutes(d.rollingMaxMs)
+      setEditRollingDays(days)
+      setEditRollingMinutes(minutes)
+    }
     setEditOpen(true); setError(null)
   }
 
@@ -342,6 +393,11 @@ export function App({ onLogout }: { onLogout: () => void }) {
     const lastSyncTrim = editLastSync.trim()
     const lastSyncAtMs = lastSyncTrim ? parseDatetimeLocal(lastSyncTrim) : null
     if (lastSyncTrim && lastSyncAtMs == null) { setError('Invalid last sync date.'); return }
+    const rollingParsed = parseOfflineGraceMs(editRollingDays, editRollingMinutes)
+    if (rollingParsed === 'err') {
+      setError('Offline grace: use whole numbers (days and minutes ≥ 0).')
+      return
+    }
     setEditSaving(true)
     try {
       const r = await fetch(`/api/platform/admin/devices/${encodeURIComponent(editRow.machineId)}`, {
@@ -350,6 +406,7 @@ export function App({ onLogout }: { onLogout: () => void }) {
           label: editLabel.trim() || null,
           notes: editNotes.trim() || null,
           tier: editTier, expiresAtMs, lastSyncAtMs,
+          rollingMaxMs: rollingParsed,
         }),
       })
       if (!r.ok) {
@@ -403,19 +460,6 @@ export function App({ onLogout }: { onLogout: () => void }) {
                 <p className="nav-bar__subtitle">License manager · Device activation · Update feed</p>
               </div>
             </div>
-            <div className="nav-bar__actions">
-              <span className="nav-bar__badge">Admin</span>
-              <button
-                type="button"
-                className="nav-bar__logout"
-                onClick={async () => {
-                  await fetch('/api/platform/auth/logout', { method: 'POST', credentials: 'include' })
-                  onLogout()
-                }}
-              >
-                Log out
-              </button>
-            </div>
           </div>
         </nav>
       </header>
@@ -456,8 +500,12 @@ export function App({ onLogout }: { onLogout: () => void }) {
           </div>
         ) : null}
 
-        {/* ── Activate form ── */}
+        {/* ── Activate form (single <form> so submit includes all fields) ── */}
         <p className="section-label">New device</p>
+        <form
+          onSubmit={(ev) => void addDevice(ev)}
+          style={{ marginBottom: 36 }}
+        >
         <div className="ios-section" style={{ marginBottom: 8 }}>
           <Field label="Machine ID" first>
             <input
@@ -536,6 +584,41 @@ export function App({ onLogout }: { onLogout: () => void }) {
               placeholder="Optional"
             />
           </Field>
+          <Field
+            label="Offline grace"
+            hint="Max time without a sync before the device must check in. Leave blank to use the server default."
+          >
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <input
+                id="new-rolling-days"
+                className="field__input"
+                type="number"
+                min={0}
+                step={1}
+                dir="ltr"
+                placeholder="Days"
+                aria-label="Offline grace days"
+                value={newRollingDays}
+                onChange={(e) => setNewRollingDays(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <span style={{ color: 'var(--label-3)', fontSize: 13 }}>d</span>
+              <input
+                id="new-rolling-minutes"
+                className="field__input"
+                type="number"
+                min={0}
+                step={1}
+                dir="ltr"
+                placeholder="Minutes"
+                aria-label="Offline grace minutes"
+                value={newRollingMinutes}
+                onChange={(e) => setNewRollingMinutes(e.target.value)}
+                style={{ flex: 1 }}
+              />
+              <span style={{ color: 'var(--label-3)', fontSize: 13 }}>m</span>
+            </div>
+          </Field>
 
           <div className="ios-toggle-row">
             <span className="ios-toggle-label">Renew from now</span>
@@ -549,10 +632,6 @@ export function App({ onLogout }: { onLogout: () => void }) {
           </div>
         </div>
 
-        <form
-          onSubmit={(ev) => void addDevice(ev)}
-          style={{ marginBottom: 36 }}
-        >
           <button
             id="activate-btn"
             type="submit"
@@ -688,7 +767,10 @@ export function App({ onLogout }: { onLogout: () => void }) {
                       onChange={(e) => setEditExpires(e.target.value)}
                     />
                   </Field>
-                  <Field label="Last sync" hint="Rolling deadline = sync time + 30 days.">
+                  <Field
+                    label="Last sync"
+                    hint="Rolling deadline uses last sync + offline grace (custom or server default)."
+                  >
                     <input
                       id="edit-last-sync"
                       className="field__input"
@@ -696,6 +778,41 @@ export function App({ onLogout }: { onLogout: () => void }) {
                       value={editLastSync}
                       onChange={(e) => setEditLastSync(e.target.value)}
                     />
+                  </Field>
+                  <Field
+                    label="Offline grace"
+                    hint="Blank days and minutes = server default window."
+                  >
+                    <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <input
+                        id="edit-rolling-days"
+                        className="field__input"
+                        type="number"
+                        min={0}
+                        step={1}
+                        dir="ltr"
+                        placeholder="Days"
+                        aria-label="Offline grace days"
+                        value={editRollingDays}
+                        onChange={(e) => setEditRollingDays(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ color: 'var(--label-3)', fontSize: 13 }}>d</span>
+                      <input
+                        id="edit-rolling-minutes"
+                        className="field__input"
+                        type="number"
+                        min={0}
+                        step={1}
+                        dir="ltr"
+                        placeholder="Minutes"
+                        aria-label="Offline grace minutes"
+                        value={editRollingMinutes}
+                        onChange={(e) => setEditRollingMinutes(e.target.value)}
+                        style={{ flex: 1 }}
+                      />
+                      <span style={{ color: 'var(--label-3)', fontSize: 13 }}>m</span>
+                    </div>
                   </Field>
                   <Field label="Notes">
                     <textarea

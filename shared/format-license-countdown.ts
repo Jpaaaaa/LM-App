@@ -18,3 +18,13 @@ export function formatLicenseRemainMs(deltaMs: number): string {
   }
   return `${h}:${pad2(m)}:${pad2(s)}`
 }
+
+/** Static duration as whole days + minutes in the remainder (e.g. `12d 45m`). */
+export function formatLicenseRemainDaysMinutes(remainingMs: number): string {
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0) return '0d 0m'
+  const totalSec = Math.floor(remainingMs / 1000)
+  const days = Math.floor(totalSec / 86400)
+  const remSec = totalSec % 86400
+  const minutes = Math.floor(remSec / 60)
+  return `${days}d ${minutes}m`
+}

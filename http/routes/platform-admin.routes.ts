@@ -4,14 +4,28 @@ import { persistPlatformDb, getPlatformDb } from '../../db/platform-db.js'
 import {
   assertTier,
   deleteDevice,
+  effectiveRollingSyncMaxMs,
   evaluateDevice,
   findDevice,
   listDevices,
-  ROLLING_SYNC_MAX_MS,
   setRevoked,
   updateDeviceAdmin,
   upsertDevice,
 } from '../../services/platform-device.service.js'
+
+/** Own-property check + coerce string JSON numbers (some proxies/clients send strings). */
+function readRollingMaxMsFromBody(body: unknown): { v: number | null | undefined; err?: string } {
+  if (body == null || typeof body !== 'object') return { v: undefined }
+  if (!Object.prototype.hasOwnProperty.call(body, 'rollingMaxMs')) return { v: undefined }
+  const raw = (body as Record<string, unknown>).rollingMaxMs
+  if (raw === null) return { v: null }
+  if (typeof raw === 'number' && Number.isFinite(raw)) return { v: raw }
+  if (typeof raw === 'string' && raw.trim() !== '') {
+    const n = Number(raw.trim())
+    if (Number.isFinite(n)) return { v: n }
+  }
+  return { v: undefined, err: 'rollingMaxMs must be a finite number or null' }
+}
 
 export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/platform/admin/devices', async (_req, reply) => {
@@ -19,10 +33,12 @@ export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise
     const now = Date.now()
     const enriched = rows.map((r) => {
       const ev = evaluateDevice(r, now)
+      const effRolling = effectiveRollingSyncMaxMs(r)
       return {
         ...r,
         computedStatus: ev.status,
-        rollingDeadlineMs: (r.lastSyncAtMs ?? r.createdAtMs) + ROLLING_SYNC_MAX_MS,
+        rollingDeadlineMs: (r.lastSyncAtMs ?? r.createdAtMs) + effRolling,
+        effectiveRollingMaxMs: effRolling,
       }
     })
     return reply.send({ devices: enriched })
@@ -37,6 +53,8 @@ export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise
       notes?: string | null
       /** ms; required for `custom` tier when creating or renewing */
       customValidForMs?: number
+      /** Per-device offline grace (ms); null = server default */
+      rollingMaxMs?: number | null
     }
   }>('/api/platform/admin/devices', async (req, reply) => {
     const machineId = typeof req.body?.machineId === 'string' ? req.body.machineId.trim() : ''
@@ -53,6 +71,12 @@ export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise
     const rawCustom = req.body?.customValidForMs
     const customValidForMs =
       typeof rawCustom === 'number' && Number.isFinite(rawCustom) ? rawCustom : undefined
+
+    const rollingRead = readRollingMaxMsFromBody(req.body)
+    if (rollingRead.err) {
+      return reply.status(400).send({ error: 'VALIDATION', message: rollingRead.err })
+    }
+    const rollingMaxMs = rollingRead.v
 
     const db = getPlatformDb()
     const existing = findDevice(db, machineId)
@@ -75,6 +99,7 @@ export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise
         notes: req.body?.notes,
         renew,
         customValidForMs,
+        rollingMaxMs,
       })
     } catch (e) {
       if (e instanceof Error && e.message === 'CUSTOM_DURATION_REQUIRED') {
@@ -97,6 +122,7 @@ export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise
       tier?: string
       expiresAtMs?: number | null
       lastSyncAtMs?: number | null
+      rollingMaxMs?: number | null
     }
   }>('/api/platform/admin/devices/:machineId', async (req, reply) => {
     const mid = req.params.machineId.trim()
@@ -126,6 +152,13 @@ export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise
       else if (typeof v === 'number' && Number.isFinite(v)) patch.lastSyncAtMs = v
       else
         return reply.status(400).send({ error: 'VALIDATION', message: 'lastSyncAtMs must be number or null' })
+    }
+    const rollingPatch = readRollingMaxMsFromBody(body)
+    if (rollingPatch.err) {
+      return reply.status(400).send({ error: 'VALIDATION', message: rollingPatch.err })
+    }
+    if (rollingPatch.v !== undefined) {
+      patch.rollingMaxMs = rollingPatch.v
     }
 
     if (Object.keys(patch).length === 0) {

@@ -26,6 +26,21 @@ function resolveRollingSyncMaxMs(): number {
 
 export const ROLLING_SYNC_MAX_MS = resolveRollingSyncMaxMs()
 
+const ROLLING_OFFLINE_MS_MIN = 1000
+const ROLLING_OFFLINE_MS_MAX = 366 * 24 * 60 * 60 * 1000
+
+/** Clamp per-device offline grace to the same bounds as the server default window. */
+export function clampRollingOfflineWindowMs(n: number): number {
+  return Math.min(ROLLING_OFFLINE_MS_MAX, Math.max(ROLLING_OFFLINE_MS_MIN, Math.round(n)))
+}
+
+export function effectiveRollingSyncMaxMs(row: PlatformDeviceRow): number {
+  if (row.rollingMaxMs != null && Number.isFinite(row.rollingMaxMs)) {
+    return clampRollingOfflineWindowMs(row.rollingMaxMs)
+  }
+  return ROLLING_SYNC_MAX_MS
+}
+
 const TIERS: ReadonlySet<string> = new Set(['5d', '15d', '1m', '2m', 'lifetime', 'custom'])
 
 /** Min/max for platform "custom" tier: validity window from activation/renew time. */
@@ -62,12 +77,16 @@ function rowFromStmt(row: Record<string, unknown> | undefined): PlatformDeviceRo
     createdAtMs: Number(row.created_at_ms),
     updatedAtMs: Number(row.updated_at_ms),
     notes: row.notes != null ? String(row.notes) : null,
+    rollingMaxMs:
+      row.rolling_max_ms != null && row.rolling_max_ms !== ''
+        ? Number(row.rolling_max_ms)
+        : null,
   }
 }
 
 export function listDevices(database: SqlDatabase): PlatformDeviceRow[] {
   const stmt = database.prepare(
-    `SELECT machine_id, label, tier, expires_at_ms, revoked, last_sync_at_ms, created_at_ms, updated_at_ms, notes
+    `SELECT machine_id, label, tier, expires_at_ms, revoked, last_sync_at_ms, created_at_ms, updated_at_ms, notes, rolling_max_ms
      FROM platform_devices ORDER BY updated_at_ms DESC`,
   )
   const out: PlatformDeviceRow[] = []
@@ -81,7 +100,7 @@ export function listDevices(database: SqlDatabase): PlatformDeviceRow[] {
 
 export function findDevice(database: SqlDatabase, machineId: string): PlatformDeviceRow | null {
   const stmt = database.prepare(
-    `SELECT machine_id, label, tier, expires_at_ms, revoked, last_sync_at_ms, created_at_ms, updated_at_ms, notes
+    `SELECT machine_id, label, tier, expires_at_ms, revoked, last_sync_at_ms, created_at_ms, updated_at_ms, notes, rolling_max_ms
      FROM platform_devices WHERE machine_id = ?`,
   )
   stmt.bind([machineId.trim()])
@@ -105,6 +124,8 @@ export type UpsertDeviceInput = {
    * length of the license window from `now` (ms). Clamped to platform min/max.
    */
   customValidForMs?: number
+  /** Per-device offline window (ms); null clears to server default. Omit to keep existing. */
+  rollingMaxMs?: number | null
 }
 
 export function upsertDevice(database: SqlDatabase, input: UpsertDeviceInput): PlatformDeviceRow {
@@ -137,9 +158,19 @@ export function upsertDevice(database: SqlDatabase, input: UpsertDeviceInput): P
   const label = input.label !== undefined ? input.label : existing?.label ?? null
   const notes = input.notes !== undefined ? input.notes : existing?.notes ?? null
 
+  let rollingMaxMsOut: number | null
+  if (input.rollingMaxMs !== undefined) {
+    rollingMaxMsOut =
+      input.rollingMaxMs === null ? null : clampRollingOfflineWindowMs(input.rollingMaxMs)
+  } else if (!existing) {
+    rollingMaxMsOut = null
+  } else {
+    rollingMaxMsOut = existing.rollingMaxMs
+  }
+
   database.run(
-    `INSERT INTO platform_devices (machine_id, label, tier, expires_at_ms, revoked, last_sync_at_ms, created_at_ms, updated_at_ms, notes)
-     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?)
+    `INSERT INTO platform_devices (machine_id, label, tier, expires_at_ms, revoked, last_sync_at_ms, created_at_ms, updated_at_ms, notes, rolling_max_ms)
+     VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?)
      ON CONFLICT(machine_id) DO UPDATE SET
        label = excluded.label,
        tier = excluded.tier,
@@ -147,8 +178,9 @@ export function upsertDevice(database: SqlDatabase, input: UpsertDeviceInput): P
        last_sync_at_ms = excluded.last_sync_at_ms,
        updated_at_ms = excluded.updated_at_ms,
        notes = excluded.notes,
+       rolling_max_ms = excluded.rolling_max_ms,
        revoked = 0`,
-    [mid, label, input.tier, expiresAtMs, lastSyncAtMs, createdAtMs, now, notes],
+    [mid, label, input.tier, expiresAtMs, lastSyncAtMs, createdAtMs, now, notes, rollingMaxMsOut],
   )
 
   const r = findDevice(database, mid)
@@ -171,6 +203,7 @@ export type AdminDevicePatch = {
   tier?: PlatformLicenseTier
   expiresAtMs?: number | null
   lastSyncAtMs?: number | null
+  rollingMaxMs?: number | null
 }
 
 /**
@@ -203,13 +236,19 @@ export function updateDeviceAdmin(
     throw new Error('INVALID_LAST_SYNC')
   }
 
+  let rollingMaxMs = existing.rollingMaxMs
+  if (patch.rollingMaxMs !== undefined) {
+    rollingMaxMs =
+      patch.rollingMaxMs === null ? null : clampRollingOfflineWindowMs(patch.rollingMaxMs)
+  }
+
   const label = patch.label !== undefined ? patch.label : existing.label
   const notes = patch.notes !== undefined ? patch.notes : existing.notes
   const now = Date.now()
 
   database.run(
-    `UPDATE platform_devices SET tier = ?, expires_at_ms = ?, last_sync_at_ms = ?, label = ?, notes = ?, updated_at_ms = ? WHERE machine_id = ?`,
-    [tier, expiresAtMs, lastSyncAtMs, label, notes, now, mid],
+    `UPDATE platform_devices SET tier = ?, expires_at_ms = ?, last_sync_at_ms = ?, label = ?, notes = ?, rolling_max_ms = ?, updated_at_ms = ? WHERE machine_id = ?`,
+    [tier, expiresAtMs, lastSyncAtMs, label, notes, rollingMaxMs, now, mid],
   )
 
   const row = findDevice(database, mid)
@@ -249,7 +288,7 @@ export function evaluateDevice(
   }
 
   const anchor = row.lastSyncAtMs ?? row.createdAtMs
-  const rollingDeadline = anchor + ROLLING_SYNC_MAX_MS
+  const rollingDeadline = anchor + effectiveRollingSyncMaxMs(row)
 
   if (nowMs > rollingDeadline) {
     return { status: 'sync_required', nextRequiredSyncBeforeMs: rollingDeadline }

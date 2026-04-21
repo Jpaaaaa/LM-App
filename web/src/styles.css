@@ -697,9 +697,16 @@ body {
 
 .device-meta:nth-child(2n) { border-right: none; }
 
+/* Five meta cells: 2×2 + full-width “Offline max” row (avoids clipped/empty grid cell). */
+.device-meta:nth-child(5) {
+  grid-column: 1 / -1;
+  border-right: none;
+}
+
 @media (min-width: 521px) {
   .device-meta:nth-child(3),
-  .device-meta:nth-child(4) { border-top: 1px solid var(--sep); }
+  .device-meta:nth-child(4),
+  .device-meta:nth-child(5) { border-top: 1px solid var(--sep); }
 }
 
 .device-meta__label {

@@ -17,6 +17,11 @@ export type PlatformDeviceRow = {
   createdAtMs: number
   updatedAtMs: number
   notes: string | null
+  /**
+   * Max time after last sync before `sync_required` (ms). Null = use server default
+   * (`AMAAN_ROLLING_SYNC_MAX_MS` / built-in default).
+   */
+  rollingMaxMs: number | null
 }
 
 export type PlatformPingResponse = {

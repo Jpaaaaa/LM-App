@@ -1,13 +1,11 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import cookie from '@fastify/cookie'
 import cors from '@fastify/cors'
 import fastifyMultipart from '@fastify/multipart'
 import fastifyStatic from '@fastify/static'
 import Fastify from 'fastify'
 import { initPlatformDb } from '../db/platform-db.js'
-import { requireAdminSession } from './auth/require-admin.js'
-import { registerPlatformAuthRoutes } from './routes/platform-auth.routes.js'
+import { loadPlatformEnvFile } from '../load-env.js'
 import { registerPlatformAdminRoutes } from './routes/platform-admin.routes.js'
 import { registerPlatformAdminUpdatesRoutes } from './routes/platform-admin-updates.routes.js'
 import { registerPlatformPingRoutes } from './routes/platform-ping.routes.js'
@@ -27,20 +25,13 @@ export type StartPlatformServerOptions = {
 }
 
 export async function startPlatformServer(opts: StartPlatformServerOptions): Promise<void> {
+  loadPlatformEnvFile()
   await initPlatformDb(opts.dbPath)
 
   // Fastify's default body limit (1 MiB) is far too small for installer
   // uploads; raise it so large multipart requests aren't rejected before the
   // per-file limit in `@fastify/multipart` kicks in.
   const app = Fastify({ logger: true, bodyLimit: 2 * 1024 * 1024 * 1024 })
-  const sessionSecret = process.env.PLATFORM_SESSION_SECRET?.trim()
-  if (!sessionSecret) {
-    throw new Error('PLATFORM_SESSION_SECRET is required (use a long random string)')
-  }
-  await app.register(cookie, {
-    secret: sessionSecret,
-    hook: 'onRequest',
-  })
   await app.register(cors, { origin: true, credentials: true })
   await app.register(fastifyMultipart, {
     limits: {
@@ -53,6 +44,8 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
   app.get('/api/platform/health', async () => ({
     ok: true,
     service: 'amaan-platform',
+    /** Present on builds without admin login; use to confirm API was restarted after removing auth. */
+    adminAuth: 'none' as const,
   }))
 
   await registerPlatformPingRoutes(app)
@@ -74,13 +67,8 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
   })
   await registerPlatformUpdateRoutes(app, { updatesDir })
 
-  await registerPlatformAuthRoutes(app)
-
-  await app.register(async (protectedApp) => {
-    protectedApp.addHook('preHandler', requireAdminSession)
-    await registerPlatformAdminRoutes(protectedApp)
-    await registerPlatformAdminUpdatesRoutes(protectedApp, { updatesDir })
-  })
+  await registerPlatformAdminRoutes(app)
+  await registerPlatformAdminUpdatesRoutes(app, { updatesDir })
 
   const webRoot = opts.webDist
   if (webRoot && fs.existsSync(webRoot)) {
@@ -103,4 +91,5 @@ export async function startPlatformServer(opts: StartPlatformServerOptions): Pro
 
   const host = opts.host ?? '0.0.0.0'
   await app.listen({ port: opts.port, host })
+  console.log('[platform] Admin /api/platform/admin/* has no login layer — protect this port in production.')
 }

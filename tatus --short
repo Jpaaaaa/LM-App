@@ -1,0 +1,25 @@
+warning: in the working copy of 'web/dist/index.html', LF will be replaced by CRLF the next time Git touches it
+ db/platform-schema.bootstrap.ts      |  15 [32m+++[m[31m-[m
+ http/auth/admin-session.ts           |  19 [31m-----[m
+ http/auth/require-admin.ts           |   8 [31m--[m
+ http/platform-server.ts              |  25 [32m++[m[31m----[m
+ http/routes/platform-admin.routes.ts |  37 [32m+++++++[m[31m-[m
+ http/routes/platform-auth.routes.ts  |  59 [31m-------------[m
+ index.ts                             |   9 [32m+[m[31m-[m
+ lm-app.env.example                   |   5 [32m+[m[31m-[m
+ package-lock.json                    |  33 [31m-------[m
+ package.json                         |   8 [32m+[m[31m-[m
+ services/platform-device.service.ts  |  55 [32m++++++++++[m[31m--[m
+ shared/format-license-countdown.ts   |  10 [32m+++[m
+ shared/license-rolling.ts            |   4 [32m+[m[31m-[m
+ shared/types/platform-devices.ts     |   5 [32m++[m
+ web/dist/assets/index-C4GDJ7_i.css   |   1 [31m-[m
+ web/dist/assets/index-fEuhHXYH.js    |  43 [31m----------[m
+ web/dist/index.html                  |   4 [32m+[m[31m-[m
+ web/package-lock.json                |   6 [32m++[m
+ web/src/App.tsx                      | 161 [32m++++++++++++++++++++++++++++++[m[31m-----[m
+ web/src/LoginPage.tsx                |  92 [31m--------------------[m
+ web/src/main.tsx                     |  34 [32m+[m[31m-------[m
+ web/src/styles.css                   |   9 [32m+[m[31m-[m
+ web/vite.config.ts                   |  15 [32m++++[m
+ 23 files changed, 302 insertions(+), 355 deletions(-)
