@@ -11,6 +11,7 @@ import { LICENSE_ROLLING_SYNC_MAX_MS } from '../shared/license-rolling.js'
 
 /**
  * Rolling window: must ping at least once within this interval (ms).
+ * Production: set `AMAAN_ROLLING_SYNC_MAX_MS` in systemd/env (see `platform/lm-app.env.example`).
  * Override for local tests: `AMAAN_ROLLING_SYNC_MAX_MS=60000` (1 minute). Clamped 1s–366d.
  */
 function resolveRollingSyncMaxMs(): number {

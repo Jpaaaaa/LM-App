@@ -1,0 +1,29 @@
+# Example systemd unit for the license platform (LM). Adjust paths and User= for your server.
+#
+#   sudo install -d /etc/lm-app
+#   sudo cp platform/lm-app.env.example /etc/lm-app/lm-app.env
+#   # edit /etc/lm-app/lm-app.env — set AMAAN_ROLLING_SYNC_MAX_MS if you want a non-default window
+#   sudo cp platform/lm-app.service.example /etc/systemd/system/lm-app.service
+#   # edit WorkingDirectory + ExecStart to match your Node app path and start command
+#   sudo systemctl daemon-reload && sudo systemctl enable --now lm-app
+
+[Unit]
+Description=Bazar One license platform (LM)
+After=network.target
+
+[Service]
+Type=simple
+User=lm-app
+Group=lm-app
+WorkingDirectory=/opt/lm-app
+EnvironmentFile=-/etc/lm-app/lm-app.env
+# Rolling window override (optional if already in EnvironmentFile):
+# Environment=AMAAN_ROLLING_SYNC_MAX_MS=2592000000
+# Use whichever matches your deploy (Node build output, or tsx for TS directly):
+ExecStart=/usr/bin/npx --no-install tsx platform/index.ts
+# ExecStart=/usr/bin/node /opt/lm-app/platform/index.js
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
