@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import type { FastifyInstance, FastifyRequest } from 'fastify'
-import { ADMIN_SESSION_COOKIE, parseAdminSession } from '../auth/admin-session'
+import { ADMIN_SESSION_COOKIE, parseAdminSession } from '../auth/admin-session.js'
 
 const SESSION_MAX_MS = 7 * 24 * 60 * 60 * 1000
 

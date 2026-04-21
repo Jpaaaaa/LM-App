@@ -7,7 +7,7 @@ import type {
   PlatformUpdateFilesResponse,
   PlatformUpdatePublishResponse,
   PlatformUpdateUploadResponse,
-} from '@shared/types/app-update'
+} from '../../shared/types/app-update.js'
 
 /**
  * Allowed artifact extensions. `electron-builder` on Windows emits `.exe`,

@@ -4,7 +4,7 @@ import type { FastifyInstance } from 'fastify'
 import type {
   PlatformUpdateLatestResponse,
   PlatformUpdateManifest,
-} from '@shared/types/app-update'
+} from '../../shared/types/app-update.js'
 
 /**
  * Minimal `latest.yml` reader — pulls version / path / sha512 / releaseDate

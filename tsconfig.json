@@ -6,9 +6,7 @@
     "strict": true,
     "skipLibCheck": true,
     "noEmit": true,
-    "paths": {
-      "@shared/*": ["./shared/*"]
-    }
+    "types": ["node"]
   },
   "include": ["index.ts", "db/**/*.ts", "http/**/*.ts", "services/**/*.ts", "shared/**/*.ts"]
 }

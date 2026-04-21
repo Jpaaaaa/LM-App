@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify'
-import type { PlatformLicenseTier } from '@shared/types/platform-devices'
-import { persistPlatformDb, getPlatformDb } from '../../db/platform-db'
+import type { PlatformLicenseTier } from '../../shared/types/platform-devices.js'
+import { persistPlatformDb, getPlatformDb } from '../../db/platform-db.js'
 import {
   assertTier,
   deleteDevice,
@@ -11,7 +11,7 @@ import {
   setRevoked,
   updateDeviceAdmin,
   upsertDevice,
-} from '../../services/platform-device.service'
+} from '../../services/platform-device.service.js'
 
 export async function registerPlatformAdminRoutes(app: FastifyInstance): Promise<void> {
   app.get('/api/platform/admin/devices', async (_req, reply) => {

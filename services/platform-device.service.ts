@@ -5,9 +5,9 @@ import type {
   PlatformDeviceRow,
   PlatformLicenseTier,
   PlatformPingResponse,
-} from '@shared/types/platform-devices'
+} from '../shared/types/platform-devices.js'
 
-import { LICENSE_ROLLING_SYNC_MAX_MS } from '../shared/license-rolling.ts'
+import { LICENSE_ROLLING_SYNC_MAX_MS } from '../shared/license-rolling.js'
 
 /**
  * Rolling window: must ping at least once within this interval (ms).

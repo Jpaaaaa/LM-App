@@ -1,10 +1,10 @@
 import type { FastifyInstance } from 'fastify'
-import { getPlatformDb, persistPlatformDb } from '../../db/platform-db'
+import { getPlatformDb, persistPlatformDb } from '../../db/platform-db.js'
 import {
   buildPingResponse,
   findDevice,
   recordSync,
-} from '../../services/platform-device.service'
+} from '../../services/platform-device.service.js'
 
 export async function registerPlatformPingRoutes(app: FastifyInstance): Promise<void> {
   app.post<{
